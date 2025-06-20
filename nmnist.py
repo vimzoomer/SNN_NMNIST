@@ -33,11 +33,11 @@ class NMNIST(Dataset):
             source = 'https://www.dropbox.com/sh/tg2ljlbmtzygrag/'\
                 'AABlMOuR15ugeOxMCX0Pvoxga/Train.zip'
 
-            if len(glob.glob(f'{data_path}/')) == 0:  # dataset does not exist
+            if len(glob.glob(f'{data_path}/Train')) == 0:  # dataset does not exist
                 print('Attempting download...')
                 os.system(f'wget {source} -P {self.dir}/ -q --show-progress')
                 print('Extracting files ...')
-                with zipfile.ZipFile(data_path + '.zip') as zip_file:
+                with zipfile.ZipFile(data_path + '/Train.zip') as zip_file:
                     for member in zip_file.namelist():
                         zip_file.extract(member, self.dir)
                 print('Download complete.')
@@ -46,7 +46,7 @@ class NMNIST(Dataset):
         self.sampling_time = sampling_time
         self.sample_length = sample_length
         self.num_time_bins = int(sample_length / sampling_time)
-        self.data = glob.glob(f'{self.dir}/*/*.bin')
+        self.data = glob.glob(f'{self.dir}/Train/*/*.bin')
 
     def __len__(self):
         return len(self.data)
@@ -71,7 +71,7 @@ class NMNIST(Dataset):
         labels = []
 
         for digit in range(10):
-            folder_path = f'{self.dir}/{digit}/*.bin'
+            folder_path = f'{self.dir}/Train/{digit}/*.bin'
 
             for filepath in glob.glob(folder_path):
                 event = slayer.io.read_2d_spikes(filepath)
