@@ -25,19 +25,24 @@ def augment(event):
     return event
 
 class NMNIST(Dataset):
-    def __init__(self, dir, sampling_time, sample_length, transform=None, download=False):
+    def __init__(self, dir, sampling_time, sample_length, transform=None, download=False, train=True):
         self.dir = dir
 
-        if download:
-            data_path = dir
-            source = 'https://www.dropbox.com/sh/tg2ljlbmtzygrag/'\
-                'AABlMOuR15ugeOxMCX0Pvoxga/Train.zip'
+        if train:
+            self.data_path = self.dir + '/Train'
+            source = 'https://www.dropbox.com/sh/tg2ljlbmtzygrag/' \
+                     'AABlMOuR15ugeOxMCX0Pvoxga/Train.zip'
+        else:
+            self.data_path = self.dir + '/Test'
+            source = 'https://www.dropbox.com/sh/tg2ljlbmtzygrag/' \
+                     'AADSKgJ2CjaBWh75HnTNZyhca/Test.zip'
 
-            if len(glob.glob(f'{data_path}/Train')) == 0:  # dataset does not exist
+        if download:
+            if len(glob.glob(f'{self.data_path}')) == 0:
                 print('Attempting download...')
                 os.system(f'wget {source} -P {self.dir}/ -q --show-progress')
                 print('Extracting files ...')
-                with zipfile.ZipFile(data_path + '/Train.zip') as zip_file:
+                with zipfile.ZipFile(self.data_path + '.zip') as zip_file:
                     for member in zip_file.namelist():
                         zip_file.extract(member, self.dir)
                 print('Download complete.')
@@ -46,15 +51,11 @@ class NMNIST(Dataset):
         self.sampling_time = sampling_time
         self.sample_length = sample_length
         self.num_time_bins = int(sample_length / sampling_time)
-        self.data = glob.glob(f'{self.dir}/Train/*/*.bin')
+        self.data = [glob.glob(f'{self.data_path}/{digit}/*.bin') for digit in range(10)]
+        self.num_labels = len(self.data)
 
-    def __len__(self):
-        return len(self.data)
-
-    def __getitem__(self, idx):
-        filename = self.data[idx]
+    def __read_spike(self, filename):
         event = slayer.io.read_2d_spikes(filename)
-        label = int(filename.split('/')[-2])
 
         if self.transform is not None:
             event = self.transform(event)
@@ -64,66 +65,70 @@ class NMNIST(Dataset):
             sampling_time=self.sampling_time,
         )
 
-        return spike.reshape(-1, self.num_time_bins), label
+        return spike
 
-    def example_of_each_class(self, assistant):
-        spikes = []
-        labels = []
+    def __len__(self):
+        return sum(len(sublist) for sublist in self.data)
 
-        for digit in range(10):
-            folder_path = f'{self.dir}/Train/{digit}/*.bin'
-
-            for filepath in glob.glob(folder_path):
-                event = slayer.io.read_2d_spikes(filepath)
-                label = int(filepath.split('/')[-2])
-
-                if self.transform is not None:
-                    event = self.transform(event)
-
-                num_time_bins = int(self.sample_length / self.sampling_time)
-
-                spike = event.fill_tensor(
-                    torch.zeros(2, 34, 34, num_time_bins),
-                    sampling_time=self.sampling_time,
-                )
-
-                spikes.append(spike)
-                labels.append(torch.tensor([label]))
+    def __getitem__(self, idx):
+        flat_index = 0
+        filename = None
+        for sublist in self.data:
+            if idx < flat_index + len(sublist):
+                filename = sublist[idx - flat_index]
                 break
+            flat_index += len(sublist)
 
-        self.visualize_spiking(spikes, labels, assistant)
+        return self.__read_spike(filename).reshape(-1, self.num_time_bins)
 
-    def visualize_spiking(self, spikes, labels, assistant):
+    def example_of_each_class(self, net):
         frames = []
         class_bars = []
         frame_labels = []
-        sample_frame_counts = []
 
-        for sample_idx, (spike, label) in enumerate(zip(spikes, labels)):
-            spike_flattened = spike.reshape(-1, self.num_time_bins).unsqueeze(0)
-            classified, _ = assistant.test(spike_flattened, label)
+        spikes = torch.cat([self.__read_spike(self.data[i][0]) for i in range(self.num_labels)], dim=-1)
+        spike_flattened = spikes.reshape(-1, self.num_labels * self.num_time_bins).unsqueeze(0)
+        classified, _ = net(spike_flattened)
 
-            start_idx = len(frames)
-
-            for t in range(1, self.num_time_bins):
-                red_channel = spike[0, :, :, t].numpy() * self.sampling_time
-                blue_channel = spike[1, :, :, t].numpy() * self.sampling_time
+        for label in range(self.num_labels):
+            for t in range(label * self.num_time_bins, (label+1) * self.num_time_bins):
+                red_channel = spikes[1, :, :, t].numpy() * self.sampling_time
+                blue_channel = spikes[0, :, :, t].numpy() * self.sampling_time
 
                 rgb_image = np.zeros((red_channel.shape[0], red_channel.shape[1], 3), dtype=float)
                 rgb_image[:, :, 0] = red_channel
                 rgb_image[:, :, 2] = blue_channel
                 frames.append(rgb_image)
 
-                spike_sum = classified[:, :, :t].sum()
-                if spike_sum > 0:
-                    bar = (classified[:, :, :t].sum(dim=2) / spike_sum).numpy()
+                t0 = max(0, t - self.num_time_bins // 2)
+                window = classified[:, :, t0:t]
+
+                spike_sum = window.sum()
+                if spike_sum.item() > 0:
+                    bar = (window.sum(dim=2) / spike_sum).detach().cpu().numpy()
                 else:
-                    bar = np.zeros((1, 10))
+                    bar = np.zeros((1, self.num_labels))
+
                 class_bars.append(bar)
 
                 frame_labels.append(label)
 
-            sample_frame_counts.append(len(frames) - start_idx)
+        merge_factor = 4
+
+        frames = [
+            np.maximum.reduce(frames[i:i + merge_factor], axis=0)
+            for i in range(0, len(frames), merge_factor)
+        ]
+
+        frame_labels = [
+            np.min(frame_labels[i:i + merge_factor], axis=0)
+            for i in range(0, len(frame_labels), merge_factor)
+        ]
+
+        class_bars = [
+            np.mean(class_bars[i:i + merge_factor], axis=0)
+            for i in range(0, len(class_bars), merge_factor)
+        ]
 
         fig, (ax_img, ax_class) = plt.subplots(1, 2, figsize=(8, 4))
 
@@ -142,8 +147,8 @@ class NMNIST(Dataset):
             ax_img.set_title(f"Label: {int(frame_labels[i])}")
             return [im, im_class]
 
-        ani = FuncAnimation(fig, update, frames=len(frames), interval=100, blit=True)
-        ani.save(f"vis_all_samples.gif", writer=PillowWriter(fps=10))
+        ani = FuncAnimation(fig, update, frames=len(frames), interval=20, blit=True)
+        ani.save(f"vis_all_samples.gif", writer=PillowWriter(fps=30))
         plt.close(fig)
 
 
@@ -164,15 +169,15 @@ class SNN(torch.nn.Module):
             [
                 slayer.block.cuba.Dense(
                     neuron_params, 34*34*2, 512,
-                    weight_norm=True, delay=True
+                    weight_norm=True, delay=False
                 ),
                 slayer.block.cuba.Dense(
                     neuron_params, 512, 512,
-                    weight_norm=True, delay=True
+                    weight_norm=True, delay=False
                 ),
                 slayer.block.cuba.Dense(
                     neuron_params, 512, 10,
-                    weight_norm=True, delay=True
+                    weight_norm=True, delay=False
                 )
             ]
         )
