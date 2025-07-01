@@ -1,7 +1,9 @@
 import glob
 import os
+import random
 import zipfile
 
+import torch.nn.functional as F
 import h5py
 from matplotlib.animation import FuncAnimation, PillowWriter
 import matplotlib.pyplot as plt
@@ -71,27 +73,37 @@ class NMNIST(Dataset):
         return sum(len(sublist) for sublist in self.data)
 
     def __getitem__(self, idx):
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
         flat_index = 0
         filename = None
-        for sublist in self.data:
+        label = None
+
+        for digit, sublist in enumerate(self.data):
             if idx < flat_index + len(sublist):
                 filename = sublist[idx - flat_index]
+                label = digit
                 break
             flat_index += len(sublist)
 
-        return self.__read_spike(filename).reshape(-1, self.num_time_bins)
+        label = torch.tensor(label, device=device)
+
+        spike_data = self.__read_spike(filename).reshape(-1, self.num_time_bins).to(device)
+
+        return spike_data, label.repeat(300)
 
     def example_of_each_class(self, net):
         frames = []
         class_bars = []
         frame_labels = []
 
-        spikes = torch.cat([self.__read_spike(self.data[i][0]) for i in range(self.num_labels)], dim=-1)
+        labels = [random.randint(0, 9) for _ in range(10)]
+        spikes = torch.cat([self.__read_spike(self.data[i][random.randint(0, len(self.data[i]) - 1)]) for i in labels], dim=-1)
         spike_flattened = spikes.reshape(-1, self.num_labels * self.num_time_bins).unsqueeze(0)
-        classified, _ = net(spike_flattened)
+        classified = F.softmax(net(spike_flattened).detach().cpu(), dim=1).numpy()
 
-        for label in range(self.num_labels):
-            for t in range(label * self.num_time_bins, (label+1) * self.num_time_bins):
+        for i, label in enumerate(labels):
+            for t in range(i * self.num_time_bins, (i+1) * self.num_time_bins):
                 red_channel = spikes[1, :, :, t].numpy() * self.sampling_time
                 blue_channel = spikes[0, :, :, t].numpy() * self.sampling_time
 
@@ -100,16 +112,9 @@ class NMNIST(Dataset):
                 rgb_image[:, :, 2] = blue_channel
                 frames.append(rgb_image)
 
-                t0 = max(0, t - self.num_time_bins // 2)
-                window = classified[:, :, t0:t]
+                window = classified[:, :, t]
 
-                spike_sum = window.sum()
-                if spike_sum.item() > 0:
-                    bar = (window.sum(dim=2) / spike_sum).detach().cpu().numpy()
-                else:
-                    bar = np.zeros((1, self.num_labels))
-
-                class_bars.append(bar)
+                class_bars.append(window)
 
                 frame_labels.append(label)
 
@@ -154,41 +159,40 @@ class NMNIST(Dataset):
 
 class SNN(torch.nn.Module):
     def __init__(self):
-        super().__init__()
+        super(SNN, self).__init__()
 
-        neuron_params = {
-            'threshold': 1.25,
-            'current_decay': 0.25,
-            'voltage_decay': 0.03,
-            'tau_grad': 0.03,
-            'scale_grad': 3,
-            'requires_grad': False,
+        cuba_params = {
+            'threshold': 0.1,
+            'current_decay': 1,
+            'voltage_decay': 0.01,
+            'requires_grad': True,
+        }
+
+        cuba_params_last_layer = {
+            'threshold': 1e5,
+            'current_decay': 1,
+            'voltage_decay': 0.01,
+            'requires_grad': True,
         }
 
         self.blocks = torch.nn.ModuleList(
             [
-                slayer.block.cuba.Dense(
-                    neuron_params, 34*34*2, 512,
-                    weight_norm=True, delay=False
-                ),
-                slayer.block.cuba.Dense(
-                    neuron_params, 512, 512,
-                    weight_norm=True, delay=False
-                ),
-                slayer.block.cuba.Dense(
-                    neuron_params, 512, 10,
-                    weight_norm=True, delay=False
-                )
+                slayer.block.cuba.Dense(cuba_params, 34*34*2, 64, delay=False),
+                slayer.block.cuba.Dense(cuba_params, 64, 512, delay=False),
+                slayer.block.cuba.Dense(cuba_params, 512, 512, delay=False),
+                slayer.block.cuba.Dense(cuba_params_last_layer, 512, 10, delay=False)
             ]
         )
 
+        self.max_potential = 0,
+        self.min_potential = 0
+
     def forward(self, spike):
-        count = []
-        for block in self.blocks:
+        for block in self.blocks[:3]:
             spike = block(spike)
-            count.append(torch.mean(spike).item())
-        return spike, torch.FloatTensor(count).reshape(
-            (1, -1)).to(spike.device)
+        wegh_spike = self.blocks[3].synapse.forward(spike)
+        (I, V) = self.blocks[3].neuron.dynamics(wegh_spike)
+        return V
 
     def export_hdf5(self, filename):
         h = h5py.File(filename, 'w')
@@ -198,10 +202,17 @@ class SNN(torch.nn.Module):
 
 
 if __name__ == '__main__':
-    trained_dir = './Train'
-    nmnist = NMNIST(trained_dir, 1, 300)
+    dir = '.'
+    nmnist = NMNIST(dir, 1, 300, download=True, transform=augment)
+    nmnist_test = NMNIST(dir, 1, 300, train=False)
 
-    net = SNN()
+    device = torch.device('cpu')
+
+    model = SNN()
+    state_dict = torch.load('network.pt')
+    model.load_state_dict(state_dict)
+
+    net = model.to(device)
 
     optimizer = torch.optim.Adam(net.parameters(), lr=0.001)
 
@@ -209,9 +220,13 @@ if __name__ == '__main__':
         dataset=nmnist, batch_size=32, shuffle=True
     )
 
+    nmnist_test_loader = DataLoader(
+        dataset=nmnist, batch_size=32, shuffle=True
+    )
+
     error = slayer.loss.SpikeRate(
         true_rate=0.2, false_rate=0.03, reduction='sum'
-    )
+    ).to(device)
 
     stats = slayer.utils.LearningStats()
     assistant = slayer.utils.Assistant(
@@ -219,20 +234,38 @@ if __name__ == '__main__':
         classifier=slayer.classifier.Rate.predict, count_log=True
     )
 
-    epochs = 200
+    epochs = 2
 
     for epoch in range(epochs):
         for i, (input, label) in enumerate(nmnist_loader):
             output, count = assistant.train(input, label)
             header = [
-                'Event rate : ' +
+                'TRAIN\nEvent rate : ' +
                 ', '.join([f'{c.item():.4f}' for c in count.flatten()]),
                 'Output : ' + str(output[0].sum(dim=1) / output[0].sum()),
                 'Label : ' + str(label[0])
             ]
             stats.print(epoch, iter=i, header=header, dataloader=nmnist_loader)
 
+        for i, (input, label) in enumerate(nmnist_test_loader):
+            output, count = assistant.test(input, label)
+            header = [
+                'TEST\nEvent rate : ' +
+                ', '.join([f'{c.item():.4f}' for c in count.flatten()]),
+                'Output : ' + str(output[0].sum(dim=1) / output[0].sum()),
+                'Label : ' + str(label[0])
+            ]
+            stats.print(epoch, iter=i, header=header, dataloader=nmnist_loader)
+
+        torch.save(net.state_dict(), dir + '/network.pt')
+
         stats.update()
+
+    model = SNN()
+    state_dict = torch.load('network.pt')
+    model.load_state_dict(state_dict)
+
+    nmnist_test.example_of_each_class(model)
 
 
 
