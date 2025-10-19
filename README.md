@@ -1,6 +1,6 @@
 # SNN NMNIST
 
-This project implements Spiking Neural Networks (SNN) in PyTorch/Lava-DL and allows training on the NMNIST dataset. Based on the official lava-dl tutorials: https://github.com/lava-nc/lava-dl
+This project implements Spiking Neural Networks (SNN) in PyTorch/Lava-DL and allows training on the NMNIST dataset. Based on the official lava-dl tutorials: https://github.com/lava-nc/lava-dl.
 
 ## Requirements
 
