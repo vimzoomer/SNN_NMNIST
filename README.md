@@ -43,7 +43,7 @@ wget https://www.dropbox.com/sh/tg2ljlbmtzygrag/AABlMOuR15ugeOxMCX0Pvoxga/Train.
 wget 'https://www.dropbox.com/sh/tg2ljlbmtzygrag/AADSKgJ2CjaBWh75HnTNZyhca/Test.zip' -P ./Test/ -q --show-progress
 ```
 
-## Running Training via Script
+## Running training via Script
 
 The script `nmnist.py` accepts the following command-line arguments:
 
@@ -62,7 +62,7 @@ Example usage:
 poetry run python ./nmnist.py --epochs 5 --batch_size 64 --download --augment
 ```
 
-## Running Training in Jupyter Notebook
+## Running training in Jupyter Notebook
 
 1. Activate Poetry environment as described above.
 
@@ -74,7 +74,7 @@ jupyter notebook snn_training.ipynb
 
 3. The notebook already contains dataset setup, model initialization, training loops, and visualization. You can run the cells directly.
 
-## Visualizing Examples
+## Visualizing examples
 
 The code provides the `example_of_each_class` function in the `NMNIST` class, which generates a GIF animation showing examples of all classes and network activity:
 
