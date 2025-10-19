@@ -21,7 +21,7 @@ cd SNN_NMNIST
 2. Install dependencies
 
 ```
-poetry install
+poetry install --no-root
 ```
 
 3. Activate the project environment
@@ -29,7 +29,7 @@ poetry install
 Since Poetry 2.x, `poetry shell` is not installed by default. Use the following commands to activate the environment:
 
 ```
-poetry env info --path
+poetry env activate
 source /path/to/venv/bin/activate  # replace with the path from previous command
 ```
 
@@ -59,7 +59,7 @@ The script `nmnist.py` accepts the following command-line arguments:
 Example usage:
 
 ```
-poetry run python ./nmnist.py --epochs 5 --batch_size 64 --download --augment --load_model
+poetry run python ./nmnist.py --epochs 5 --batch_size 64 --download --augment
 ```
 
 ## Running Training in Jupyter Notebook
