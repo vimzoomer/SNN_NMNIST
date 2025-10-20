@@ -40,7 +40,7 @@ To download manually:
 
 ```
 wget https://www.dropbox.com/sh/tg2ljlbmtzygrag/AABlMOuR15ugeOxMCX0Pvoxga/Train.zip -P ./Train/ -q --show-progress
-wget 'https://www.dropbox.com/sh/tg2ljlbmtzygrag/AADSKgJ2CjaBWh75HnTNZyhca/Test.zip' -P ./Test/ -q --show-progress
+wget https://www.dropbox.com/sh/tg2ljlbmtzygrag/AADSKgJ2CjaBWh75HnTNZyhca/Test.zip -P ./Test/ -q --show-progress
 ```
 
 ## Running training via Script
