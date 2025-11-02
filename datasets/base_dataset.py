@@ -58,6 +58,32 @@ class BaseDataset(Dataset, ABC):
         filename, label = self.data[idx]
         return self._read_spike(filename).reshape(-1, self.num_time_bins), label
 
+    def get_spike_train(self, net: "SNN", cls: int, filepath: str = "spikes.txt"):
+        torch.set_printoptions(threshold=torch.inf)
+
+        spikes = self._read_spike(self.data_by_class[cls][0])
+        spikes_flattened = spikes.reshape(-1, self.num_time_bins).unsqueeze(0)
+        output = net(spikes_flattened)
+        print("Output spike rate: ", slayer.classifier.Rate.rate(output))
+
+        flat = spikes_flattened.T.flatten()
+
+        pad = (4 - (flat.numel() % 4)) % 4
+        if pad > 0:
+            flat = torch.nn.functional.pad(flat, (0, pad), value=0)
+
+        grouped = flat.reshape(-1, 4)
+
+        weights = torch.tensor([8, 4, 2, 1], device=flat.device)
+        ints = (grouped * weights).sum(dim=-1).to(torch.int32)
+
+        hex_seq = [format(v.item(), 'X') for v in ints]
+
+        with open(filepath, "w") as f:
+            f.write("\n".join(hex_seq))
+
+        print(f"Saved {len(hex_seq)} hex values to {filepath}")
+
     def example_of_each_class(self, net: "SNN", merge_factor: int = 4) -> None:
         frames = []
         class_bars = []
@@ -71,6 +97,7 @@ class BaseDataset(Dataset, ABC):
             for t in range(label * self.num_time_bins, (label+1) * self.num_time_bins):
                 red_channel = spikes[1, :, :, t].numpy() * self.sampling_time
                 blue_channel = spikes[0, :, :, t].numpy() * self.sampling_time
+                print(np.sum(red_channel))
 
                 rgb_image = np.zeros((red_channel.shape[0], red_channel.shape[1], 3), dtype=float)
                 rgb_image[:, :, 0] = red_channel
