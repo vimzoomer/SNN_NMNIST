@@ -85,7 +85,6 @@ if __name__ == '__main__':
         classifier=slayer.classifier.Rate.predict
     )
 
-    """
     for epoch in range(args.epochs):
         for i, (input, label) in enumerate(nmnist_loader):
             output = assistant.train(input, label)
@@ -98,11 +97,11 @@ if __name__ == '__main__':
 
         torch.save(net.state_dict(), args.dir + '/network.pt')
         stats.update()
-    """
 
     Deployment(net).deploy()
 
     nmnist.get_spike_train(net, 0)
+
     """
     nmnist.example_of_each_class(net, 1)
 

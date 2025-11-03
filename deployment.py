@@ -2,7 +2,7 @@ import numpy as np
 import torch
 from lava.lib.dl.slayer.utils import quantize_hook_fx
 
-from utils.deploy import is_power_of_two, next_power_of_two, hex_conv, concat_layer_expr
+from utils.deployment import is_power_of_two, next_power_of_two, hex_conv, concat_layer_expr
 
 
 class Deployment():
