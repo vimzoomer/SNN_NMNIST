@@ -194,10 +194,11 @@ cython_debug/
 .cursorindexingignore
 
 .DS_Store
-Test/
-Train/
 *.zip
 .idea/
 *.pt
 *.net
 *.gif
+
+*.coe
+*.txt

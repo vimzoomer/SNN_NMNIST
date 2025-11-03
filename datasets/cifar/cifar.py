@@ -21,13 +21,15 @@ class CIFAR(BaseDataset):
 
     def _read_spike(self, filename: str) -> torch.Tensor:
         with open(filename, 'rb') as fp:
-            t, x, y, p = load_events(fp,
-                                     x_mask=0xfE,
-                                     x_shift=1,
-                                     y_mask=0x7f00,
-                                     y_shift=8,
-                                     polarity_mask=1,
-                                     polarity_shift=None)
+            t, x, y, p = load_events(
+                fp,
+                x_mask=0xfE,
+                x_shift=1,
+                y_mask=0x7f00,
+                y_shift=8,
+                polarity_mask=1,
+                polarity_shift=None
+            )
 
         t = t / 1000
         x = 127 - x

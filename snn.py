@@ -52,13 +52,8 @@ class SNN(torch.nn.Module):
             ]
         )
 
-        for block in self.blocks:
-            with torch.no_grad():
-                block.synapse.weight.data = block.synapse.weight.data.abs()
-
     def forward(self, spike):
         for block in self.blocks:
-            print("WEIGHTS:", torch.sum(block.synapse.weight[:, :, 0, 0, 0]))
             spike = block(spike)
         return spike
 

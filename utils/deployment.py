@@ -42,5 +42,3 @@ def next_power_of_two(n):
     while power <= n:
         power *= 2
     return power
-
-print(bin(concat_layer_expr(0, 31, 577, 2312, 64, 18496)))
