@@ -34,6 +34,5 @@ class NMNIST(BaseDataset):
                         zip_file.extract(member, f"{self.dir}/datasets/nmnist/")
                 print('Download complete.')
 
-        print(glob.glob(f'{self.data_path}/*/*.bin'))
         self.data = [(filename, int(filename.split('/')[-2]))  for filename in glob.glob(f'{self.data_path}/*/*.bin')]
         self.data_by_class = [glob.glob(f'{self.data_path}/{digit}/*.bin') for digit in range(self.num_classes)]
