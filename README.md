@@ -40,8 +40,8 @@ By default, the data is downloaded automatically when the `NMNIST` class is used
 To download manually:
 
 ```
-wget https://www.dropbox.com/sh/tg2ljlbmtzygrag/AABlMOuR15ugeOxMCX0Pvoxga/Train.zip -P /datasets/nmnist/ -q --show-progress
-wget https://www.dropbox.com/sh/tg2ljlbmtzygrag/AADSKgJ2CjaBWh75HnTNZyhca/Test.zip -P /datasets/nmnist/ -q --show-progress
+wget https://www.dropbox.com/sh/tg2ljlbmtzygrag/AABlMOuR15ugeOxMCX0Pvoxga/Train.zip -P ./datasets/nmnist/ -q --show-progress
+wget https://www.dropbox.com/sh/tg2ljlbmtzygrag/AADSKgJ2CjaBWh75HnTNZyhca/Test.zip -P ./datasets/nmnist/ -q --show-progress
 ```
 
 Some other datasets don't have automatic download.
