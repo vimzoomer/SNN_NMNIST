@@ -2,7 +2,7 @@ import numpy as np
 import torch
 from lava.lib.dl.slayer.utils import quantize_hook_fx
 
-from utils.deploy import is_power_of_two, next_power_of_two, hex_conv
+from utils.deploy import is_power_of_two, next_power_of_two, hex_conv, concat_layer_expr
 
 
 class Deployment():
@@ -22,110 +22,50 @@ class Deployment():
 
     def _create_weights_files(self):
         quantized_weights = [self.quantizer(weight).to(torch.int32) for weight in self.weights]
+        neurons = [self.net.neurons_1, self.net.neurons_2, self.net.neurons_3, self.net.neurons_4]
+        synapses = [self.net.inputs, self.net.neurons_1, self.net.neurons_2, self.net.neurons_3]
+        weights = [["0000" for _ in range(max(neurons)//2 * max(synapses)//4 * len(neurons))] for _ in range(len(neurons))]
+
+        MAX_LAYER = max(
+            synapses[0] * neurons[0],
+            synapses[1] * neurons[1],
+            synapses[2] * neurons[2],
+            synapses[3] * neurons[3],
+        ) // 8
+
+        for layer in range(len(neurons)):
+            weights_int = quantized_weights[layer]
+            for neuron in range(weights_int.shape[0]):
+                for synapse in range(0, weights_int.shape[1], 4):
+                    w1 = hex_conv(weights_int[neuron, synapse], 8)
+                    w2 = hex_conv(weights_int[neuron, synapse + 1], 8)
+                    w3 = hex_conv(weights_int[neuron, synapse + 2], 8)
+                    w4 = hex_conv(weights_int[neuron, synapse + 3], 8)
+
+                    w_a_hex = w1 + w2
+                    w_b_hex = w3 + w4
+
+                    mem_wr_addr = concat_layer_expr(layer, neuron // 2, synapse // 4, synapses[layer], neurons[layer], MAX_LAYER)
+
+                    if neuron % 2:
+                        weights[2][mem_wr_addr] = w_a_hex
+                        weights[3][mem_wr_addr] = w_b_hex
+                    else:
+                        weights[0][mem_wr_addr] = w_a_hex
+                        weights[1][mem_wr_addr] = w_b_hex
+
         files = ['weights_1.coe', 'weights_2.coe', 'weights_3.coe', 'weights_4.coe']
 
-        with open(files[0], 'w') as fa, open(files[1], 'w') as fb, open(files[2], 'w') as fc, open(files[3], 'w') as fd:
-            for f in [fa, fb, fc, fd]:
-                f.write('memory_initialization_radix = 16;\n')
-                f.write('memory_initialization_vector =\n')
+        for i, fname in enumerate(files):
+            coe_data = (
+                    "memory_initialization_radix=16;\n"
+                    "memory_initialization_vector=\n" +
+                    ",".join(weights[i]) + ";\n"
+            )
+            with open(fname, "w") as f:
+                f.write(coe_data)
+            print(f"[OK] zapisano {fname} ({len(weights[i])} pozycji)")
 
-            for k in range(len(self.weights)):
-                weights_int = quantized_weights[k]
-
-                for j in range(weights_int.shape[0]):
-                    weights_a = []
-                    weights_b = []
-
-                    for i in range(0, weights_int.shape[1], 4):
-                        w1 = hex_conv(weights_int[j, i], 8)
-                        w2 = hex_conv(weights_int[j, i + 1], 8)
-                        w3 = hex_conv(weights_int[j, i + 2], 8)
-                        w4 = hex_conv(weights_int[j, i + 3], 8)
-
-                        w_a_hex = w2 + w1
-                        w_b_hex = w4 + w3
-
-                        weights_a.append(w_a_hex)
-                        weights_b.append(w_b_hex)
-
-                    line_a = ','.join(weights_a)
-                    line_b = ','.join(weights_b)
-
-                    if is_power_of_two(weights_int.shape[1]):
-                        padding = 0
-                    else:
-                        padding = int((next_power_of_two(weights_int.shape[1]) - weights_int.shape[1]) / 4)
-
-                    pad_word = '0000'
-
-                    if j % 2:
-                        fc.write(line_a + (',' + pad_word) * padding + ',\n')
-                        fd.write(line_b + (',' + pad_word) * padding + ',\n')
-                    else:
-                        fa.write(line_a + (',' + pad_word) * padding + ',\n')
-                        fb.write(line_b + (',' + pad_word) * padding + ',\n')
-
-                # Padding dodatkowych wierszy
-                if is_power_of_two(weights_int.shape[0]):
-                    padding2 = 0
-                else:
-                    padding2 = (next_power_of_two(weights_int.shape[0]) - weights_int.shape[0])
-
-                int_padd = np.floor_divide(padding2, 2)
-                remainder = np.remainder(padding2, 2)
-
-                if is_power_of_two(weights_int.shape[1]):
-                    synapses = int(weights_int.shape[1] / 4)
-                else:
-                    synapses = int(next_power_of_two(weights_int.shape[1]) / 4)
-
-                pad_line = (pad_word + ',') * synapses + '\n'
-
-                for _ in range(int_padd):
-                    fa.write(pad_line)
-                    fb.write(pad_line)
-                for _ in range(int_padd + remainder):
-                    fc.write(pad_line)
-                    fd.write(pad_line)
-
-                # Dodatkowy padding na końcu bloków
-                nsm = max(
-                    self.weights[0].shape[0] * self.weights[0].shape[1],
-                    self.weights[1].shape[0] * self.weights[1].shape[1],
-                    self.weights[2].shape[0] * self.weights[2].shape[1],
-                    self.weights[3].shape[0] * self.weights[3].shape[1],
-                ) / 4
-
-                n, s = weights_int.shape
-                if not is_power_of_two(n):
-                    n = next_power_of_two(n)
-                n /= 2
-                if not is_power_of_two(s):
-                    s = next_power_of_two(s)
-                s /= 2
-
-                padding = int(nsm - n * s)
-                if padding > 0:
-                    for f in [fa, fb, fc, fd]:
-                        f.write((pad_word + ',') * (padding - 1) + pad_word + '\n')
-
-            for f in [fa, fb, fc, fd]:
-                f.write(';\n')
-
-        # --- LICZENIE WSZYSTKICH SŁÓW PO ZAPISIE ---
-        total_words = 0
-        for filename in [files[0]]:
-            with open(filename, 'r') as f:
-                content = f.read()
-                # usuń linię z nagłówkiem i średnik na końcu
-                content = content.replace('memory_initialization_radix = 16;\n', '')
-                content = content.replace('memory_initialization_vector =\n', '')
-                content = content.replace(';\n', '')
-                # podziel po przecinkach i policz wszystkie niepuste elementy
-                words = [x for x in content.split(',') if x.strip()]
-                total_words += len(words)
-
-        print(f"Łącznie słów zapisanych do pamięci (w tym padding): {total_words}")
 
     def _create_config_file(self):
         with open('config.txt', 'wt') as f:
