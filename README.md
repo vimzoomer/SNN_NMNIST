@@ -1,13 +1,14 @@
 # SNN NMNIST
 
-This project implements Spiking Neural Networks (SNN) in PyTorch/Lava-DL and allows training on the NMNIST dataset. Based on the official lava-dl tutorials: https://github.com/lava-nc/lava-dl.
+This project implements Spiking Neural Networks (SNN) in PyTorch/Lava-DL and allows training on the NMNIST dataset, currently other datasets are added too. Based on the official lava-dl tutorials: https://github.com/lava-nc/lava-dl.
 
 ## Requirements
 
 * Python 3.10
 * Poetry 2.x
-* wget (for downloading NMNIST)
+* wget
 * Jupyter Notebook / Jupyter Lab
+* When you use Windows running in WSL is recommended
 
 ## Installation
 
@@ -21,7 +22,7 @@ cd SNN_NMNIST
 2. Install dependencies
 
 ```
-poetry install --no-root
+poetry install
 ```
 
 3. Activate the project environment
@@ -39,27 +40,29 @@ By default, the data is downloaded automatically when the `NMNIST` class is used
 To download manually:
 
 ```
-wget https://www.dropbox.com/sh/tg2ljlbmtzygrag/AABlMOuR15ugeOxMCX0Pvoxga/Train.zip -P ./Train/ -q --show-progress
-wget https://www.dropbox.com/sh/tg2ljlbmtzygrag/AADSKgJ2CjaBWh75HnTNZyhca/Test.zip -P ./Test/ -q --show-progress
+wget https://www.dropbox.com/sh/tg2ljlbmtzygrag/AABlMOuR15ugeOxMCX0Pvoxga/Train.zip -P /datasets/nmnist/ -q --show-progress
+wget https://www.dropbox.com/sh/tg2ljlbmtzygrag/AADSKgJ2CjaBWh75HnTNZyhca/Test.zip -P /datasets/nmnist/ -q --show-progress
 ```
+
+Some other datasets don't have automatic download.
 
 ## Running training via Script
 
-The script `nmnist.py` accepts the following command-line arguments:
+The script `main.py` accepts the following command-line arguments:
 
 * `--dir`: Dataset directory (default: `.`)
 * `--epochs`: Number of training epochs (default: 2)
 * `--batch_size`: Batch size for training and testing (default: 32)
-* `--sampling_time`: Sampling time for NMNIST spike events (default: 1)
+* `--sampling_time`: Sampling time for spike events (default: 1)
 * `--sample_length`: Length of each sample in time bins (default: 300)
-* `--download`: Download NMNIST dataset if not present (flag, default: False)
+* `--download`: Download dataset if not present (flag, default: False)
 * `--augment`: Apply data augmentation to training data (flag, default: False)
 * `--load_model`: Path to pre-trained model to load before training (default: None)
 
 Example usage:
 
 ```
-poetry run python ./nmnist.py --epochs 5 --batch_size 64 --download --augment
+poetry run python ./main.py --epochs 5 --batch_size 64 --download --augment
 ```
 
 ## Running training in Jupyter Notebook
